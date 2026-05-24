@@ -1,0 +1,973 @@
+<!DOCTYPE html>
+<html lang="sv">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Begagnatjägaren</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,700;0,900;1,400;1,700&family=Source+Sans+3:wght@400;600;700&display=swap');
+
+:root {
+  /* Från bilderna: grusväg, mossa, fält, himmel, röd stuga */
+  --sky:       #7aadcf;
+  --sky-deep:  #3d7fa3;
+  --field:     #c8a84b;
+  --field-pale:#e8d89a;
+  --forest:    #3d5c3a;
+  --forest-mid:#5a7d55;
+  --moss:      #7a9e6a;
+  --gravel:    #9e9080;
+  --gravel-lt: #cdc4b8;
+  --red-barn:  #8b2020;
+  --birch:     #e8e4d8;
+  --bark:      #6b5840;
+  --coffee:    #2e1f10;
+  --cream:     #f5f0e8;
+  --white:     #fdfcf9;
+
+  /* UI */
+  --bg:        #1a1510;
+  --surface:   rgba(245,240,232,0.95);
+  --surface2:  rgba(245,240,232,0.75);
+  --border:    rgba(110,88,64,0.25);
+  --border-hi: rgba(110,88,64,0.55);
+  --text:      #1a1208;
+  --text-mid:  #4a3820;
+  --text-muted:#7a6548;
+  --accent:    #c8a84b;
+  --accent2:   #8b6e30;
+  --green-ok:  #3d6b38;
+  --red-err:   #8b2020;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  font-family: 'Source Sans 3', sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  min-height: 100vh;
+  overflow-x: hidden;
+}
+
+/* ═══════════════════════════════
+   BAKGRUND — svensk natur
+═══════════════════════════════ */
+.bg-layer {
+  position: fixed; inset: 0; z-index: 0;
+  /* Himmel → skog → mark */
+  background: linear-gradient(
+    to bottom,
+    #7aadcf 0%,
+    #a8cfe0 18%,
+    #c8dde8 28%,
+    #d8e8c8 38%,
+    #b8d0a0 48%,
+    #7a9e6a 58%,
+    #5a7d55 68%,
+    #3d5c3a 78%,
+    #2a3e28 88%,
+    #1a2818 100%
+  );
+}
+
+/* Grustextur-overlay */
+.bg-layer::after {
+  content: '';
+  position: absolute; inset: 0;
+  background:
+    radial-gradient(ellipse 80% 30% at 50% 100%, rgba(26,21,16,0.9) 0%, transparent 70%),
+    radial-gradient(ellipse 120% 20% at 50% 75%, rgba(90,125,85,0.4) 0%, transparent 60%);
+}
+
+/* Solglimtar */
+.sun-rays {
+  position: fixed;
+  top: -20%; right: 15%;
+  width: 400px; height: 400px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(255,240,180,0.35) 0%, rgba(200,168,75,0.15) 40%, transparent 70%);
+  z-index: 1;
+  animation: sunshift 8s ease-in-out infinite;
+  pointer-events: none;
+}
+@keyframes sunshift {
+  0%,100% { transform: scale(1) translateY(0); opacity: 0.8; }
+  50% { transform: scale(1.1) translateY(-10px); opacity: 1; }
+}
+
+/* Träd-siluetter */
+.trees {
+  position: fixed;
+  bottom: 0; left: 0; right: 0;
+  height: 200px;
+  z-index: 2;
+  pointer-events: none;
+  display: flex;
+  align-items: flex-end;
+  overflow: hidden;
+}
+
+.tree {
+  flex-shrink: 0;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end;
+}
+
+.tree-trunk {
+  background: #1a1208;
+  border-radius: 2px 2px 0 0;
+}
+
+.tree-crown {
+  position: absolute;
+  border-left: solid transparent;
+  border-right: solid transparent;
+  border-bottom: solid #1a2010;
+}
+
+/* Mark */
+.ground {
+  position: fixed;
+  bottom: 0; left: 0; right: 0;
+  height: 80px;
+  z-index: 3;
+  background: linear-gradient(to top, #120e08 0%, #1e1810 60%, transparent 100%);
+  pointer-events: none;
+}
+
+/* Fåglar */
+.bird {
+  position: fixed;
+  font-size: 14px;
+  z-index: 4;
+  pointer-events: none;
+  animation: birdfly var(--bd,20s) linear infinite;
+  animation-delay: var(--bdelay,0s);
+  opacity: 0.7;
+}
+@keyframes birdfly {
+  0%   { transform: translateX(-60px) translateY(0px); left: -5%; }
+  25%  { transform: translateX(0) translateY(-20px); }
+  50%  { transform: translateX(0) translateY(5px); }
+  75%  { transform: translateX(0) translateY(-10px); }
+  100% { transform: translateX(60px) translateY(0); left: 105%; }
+}
+
+/* ═══════════════════════════════
+   APP SHELL
+═══════════════════════════════ */
+#app {
+  position: relative;
+  z-index: 10;
+  min-height: 100vh;
+  padding-bottom: 120px;
+}
+
+/* HEADER */
+header {
+  position: sticky; top: 0; z-index: 50;
+  background: rgba(26,18,8,0.88);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border-bottom: 1px solid rgba(200,168,75,0.3);
+  padding: 0 20px;
+  height: 58px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.logo {
+  font-family: 'Playfair Display', serif;
+  font-style: italic;
+  font-size: 24px;
+  color: var(--accent);
+  letter-spacing: 0.3px;
+  text-shadow: 0 1px 8px rgba(200,168,75,0.4);
+}
+
+nav { margin-left: auto; display: flex; gap: 2px; }
+
+.nav-btn {
+  background: none; border: none;
+  color: rgba(245,240,232,0.5);
+  font-family: 'Source Sans 3', sans-serif;
+  font-weight: 700; font-size: 13px;
+  letter-spacing: 0.8px; text-transform: uppercase;
+  padding: 7px 13px; cursor: pointer; border-radius: 16px;
+  transition: all 0.18s;
+}
+.nav-btn:hover { color: var(--accent); background: rgba(200,168,75,0.12); }
+.nav-btn.active { color: var(--accent); background: rgba(200,168,75,0.18); }
+
+/* MAIN */
+main { max-width: 800px; margin: 0 auto; padding: 28px 16px 40px; }
+
+/* KORT */
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border-hi);
+  border-radius: 16px;
+  padding: 22px;
+  margin-bottom: 18px;
+  box-shadow: 0 4px 24px rgba(0,0,0,0.25), 0 1px 0 rgba(255,255,255,0.5) inset;
+}
+
+.card-eyebrow {
+  font-size: 11px; font-weight: 700;
+  letter-spacing: 1.5px; text-transform: uppercase;
+  color: var(--text-muted); margin-bottom: 14px;
+}
+
+/* SÖKRUTA */
+.search-row { display: flex; gap: 8px; margin-bottom: 20px; }
+
+.search-input {
+  flex: 1;
+  background: var(--white);
+  border: 2px solid var(--border);
+  border-radius: 10px;
+  color: var(--text);
+  font-family: 'Source Sans 3', sans-serif;
+  font-size: 18px; font-weight: 400;
+  padding: 12px 16px;
+  outline: none;
+  transition: border-color 0.18s, box-shadow 0.18s;
+}
+.search-input:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(200,168,75,0.18);
+}
+.search-input::placeholder { color: #b8a888; }
+
+.btn-search {
+  background: linear-gradient(160deg, #c8a84b, #9e7e2a);
+  border: none; border-radius: 10px;
+  color: #1a1208;
+  font-family: 'Source Sans 3', sans-serif;
+  font-weight: 700; font-size: 15px;
+  padding: 12px 22px;
+  cursor: pointer;
+  transition: all 0.18s;
+  box-shadow: 0 3px 12px rgba(158,126,42,0.4);
+  white-space: nowrap;
+  display: flex; align-items: center; gap: 7px;
+}
+.btn-search:hover { transform: translateY(-1px); box-shadow: 0 5px 18px rgba(158,126,42,0.55); }
+.btn-search:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+
+/* SLIDER */
+.slider-wrap {
+  border-top: 1px solid var(--border);
+  padding-top: 16px;
+  display: flex; align-items: center; gap: 14px;
+}
+.slider-lbl {
+  font-size: 11px; font-weight: 700;
+  letter-spacing: 1.2px; text-transform: uppercase;
+  color: var(--text-muted); white-space: nowrap; min-width: 80px;
+}
+.slider-track { flex: 1; }
+input[type=range] {
+  -webkit-appearance: none;
+  width: 100%; height: 4px;
+  background: linear-gradient(to right, var(--moss), var(--field), var(--red-barn));
+  border-radius: 2px; outline: none;
+}
+input[type=range]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 20px; height: 20px; border-radius: 50%;
+  background: radial-gradient(circle at 35% 35%, #fff8e8, var(--accent));
+  cursor: pointer;
+  border: 3px solid white;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.3);
+}
+.slider-ticks {
+  display: flex; justify-content: space-between; margin-top: 4px;
+}
+.slider-ticks span { font-size: 10px; color: var(--text-muted); font-weight: 600; }
+.slider-val {
+  font-family: 'Playfair Display', serif;
+  font-style: italic; font-size: 15px;
+  color: var(--accent2); min-width: 65px; text-align: right;
+}
+
+/* LOADING */
+.loading-wrap {
+  text-align: center; padding: 48px 20px;
+}
+.loading-icon { font-size: 36px; animation: leaffall 1.8s ease-in-out infinite; }
+@keyframes leaffall {
+  0%,100% { transform: rotate(-8deg) translateY(0); }
+  50% { transform: rotate(8deg) translateY(-12px); }
+}
+.loading-txt {
+  margin-top: 14px;
+  font-family: 'Playfair Display', serif;
+  font-style: italic; font-size: 16px;
+  color: var(--cream);
+  text-shadow: 0 1px 4px rgba(0,0,0,0.5);
+}
+
+/* RESULTAT-HEADER */
+.results-bar {
+  display: flex; align-items: center; flex-wrap: wrap;
+  gap: 10px; margin-bottom: 14px;
+}
+.results-title {
+  font-family: 'Playfair Display', serif;
+  font-size: 20px; color: var(--cream);
+  text-shadow: 0 1px 6px rgba(0,0,0,0.5);
+  flex: 1;
+}
+.results-count { font-size: 13px; color: rgba(245,240,232,0.55); }
+
+.btn-ghost {
+  background: rgba(245,240,232,0.12);
+  border: 1px solid rgba(245,240,232,0.3);
+  border-radius: 16px; color: var(--cream);
+  font-family: 'Source Sans 3', sans-serif;
+  font-weight: 700; font-size: 12px; letter-spacing: 0.5px;
+  padding: 6px 13px; cursor: pointer; transition: all 0.18s;
+  backdrop-filter: blur(6px);
+}
+.btn-ghost:hover { background: rgba(200,168,75,0.2); border-color: var(--accent); color: var(--accent); }
+
+/* SÖKTERMS-CHIPS */
+.terms-row { display: flex; flex-wrap: wrap; gap: 5px; margin-bottom: 12px; }
+.term-chip {
+  background: rgba(200,168,75,0.18);
+  border: 1px solid rgba(200,168,75,0.4);
+  border-radius: 12px; padding: 3px 10px;
+  font-size: 11px; font-weight: 700; letter-spacing: 0.3px;
+  color: var(--accent); backdrop-filter: blur(4px);
+}
+
+/* AI-SAMMANFATTNING */
+.ai-box {
+  background: rgba(26,18,8,0.6);
+  border: 1px solid rgba(200,168,75,0.22);
+  border-left: 3px solid var(--accent);
+  border-radius: 10px; padding: 13px 16px;
+  margin-bottom: 14px;
+  font-size: 14px; line-height: 1.75;
+  color: rgba(245,240,232,0.82);
+  backdrop-filter: blur(8px);
+}
+.ai-box-label {
+  font-family: 'Playfair Display', serif;
+  font-style: italic; font-size: 11px;
+  color: var(--accent); margin-bottom: 5px; letter-spacing: 0.5px;
+}
+
+/* ANNONS-KORT */
+.result-card {
+  background: var(--surface);
+  border: 1px solid var(--border-hi);
+  border-radius: 14px;
+  overflow: hidden;
+  margin-bottom: 10px;
+  display: flex;
+  cursor: pointer;
+  transition: all 0.18s;
+  box-shadow: 0 3px 14px rgba(0,0,0,0.15);
+}
+.result-card:hover {
+  transform: translateY(-2px);
+  border-color: var(--accent);
+  box-shadow: 0 6px 22px rgba(0,0,0,0.22);
+}
+
+/* THUMBNAIL */
+.result-thumb {
+  width: 100px; min-width: 100px;
+  background: linear-gradient(135deg, #e8e0d0, #d0c8b8);
+  position: relative; overflow: hidden; flex-shrink: 0;
+}
+.result-thumb img {
+  width: 100%; height: 100%; object-fit: cover; display: block;
+}
+.result-thumb-ph {
+  width: 100%; height: 100%; min-height: 90px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 28px; opacity: 0.45;
+}
+.result-thumb-site {
+  position: absolute; bottom: 0; left: 0; right: 0;
+  background: rgba(26,18,8,0.65);
+  color: rgba(245,240,232,0.9);
+  font-size: 8px; font-weight: 700;
+  letter-spacing: 0.8px; text-transform: uppercase;
+  padding: 2px 5px; text-align: center;
+}
+
+/* BODY */
+.result-body {
+  flex: 1; padding: 13px 14px;
+  display: flex; flex-direction: column; gap: 3px; min-width: 0;
+}
+.result-site-lbl {
+  font-size: 10px; font-weight: 700;
+  letter-spacing: 1px; text-transform: uppercase;
+  color: var(--bark); margin-bottom: 1px;
+}
+.result-row { display: flex; align-items: flex-start; gap: 8px; justify-content: space-between; }
+.result-title {
+  font-size: 15px; font-weight: 700; color: var(--text);
+  line-height: 1.3;
+  overflow: hidden; display: -webkit-box;
+  -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+}
+.result-price {
+  font-family: 'Playfair Display', serif;
+  font-weight: 900; font-size: 18px;
+  color: var(--green-ok); white-space: nowrap; flex-shrink: 0;
+}
+.result-price.no-price { color: var(--text-muted); font-size: 13px; font-family: 'Source Sans 3',sans-serif; font-weight: 400; }
+.result-meta {
+  font-size: 12px; color: var(--text-muted);
+  display: flex; gap: 10px; flex-wrap: wrap; margin-top: 2px;
+}
+.result-link {
+  display: inline-block; margin-top: 7px; align-self: flex-start;
+  background: linear-gradient(135deg, var(--accent), var(--accent2));
+  color: #1a1208; font-size: 11px; font-weight: 700;
+  letter-spacing: 0.5px; text-transform: uppercase;
+  padding: 4px 11px; border-radius: 12px;
+  text-decoration: none;
+  box-shadow: 0 2px 6px rgba(158,126,42,0.35);
+}
+
+/* INGEN TRÄFF */
+.no-result { text-align: center; padding: 56px 20px; }
+.no-result-icon { font-size: 48px; margin-bottom: 12px; }
+.no-result h3 {
+  font-family: 'Playfair Display', serif; font-style: italic;
+  font-size: 22px; color: var(--cream);
+  text-shadow: 0 1px 4px rgba(0,0,0,0.5); margin-bottom: 8px;
+}
+.no-result p { color: rgba(245,240,232,0.55); font-size: 14px; }
+
+/* TAB */
+.tab-content { display: none; }
+.tab-content.active { display: block; }
+
+/* BEVAKNINGAR */
+.watch-form {
+  background: var(--surface2);
+  border: 2px dashed var(--border-hi);
+  border-radius: 16px; padding: 20px; margin-bottom: 20px;
+}
+.watch-form-title {
+  font-family: 'Playfair Display', serif; font-style: italic;
+  font-size: 15px; color: var(--text-muted); margin-bottom: 13px;
+}
+.form-row { display: flex; gap: 8px; margin-bottom: 12px; }
+.form-input {
+  flex: 1; background: var(--white);
+  border: 1.5px solid var(--border); border-radius: 9px;
+  color: var(--text); font-family: 'Source Sans 3',sans-serif;
+  font-size: 14px; padding: 9px 13px; outline: none; transition: border-color 0.18s;
+}
+.form-input:focus { border-color: var(--accent); }
+.form-input::placeholder { color: #b8a888; }
+
+.watch-card {
+  background: var(--surface);
+  border: 1px solid var(--border-hi);
+  border-radius: 14px; padding: 16px 18px; margin-bottom: 10px;
+  box-shadow: 0 3px 12px rgba(0,0,0,0.12);
+}
+.watch-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+.watch-name {
+  font-family: 'Playfair Display', serif;
+  font-size: 17px; font-weight: 700; color: var(--text);
+}
+.watch-terms { display: flex; flex-wrap: wrap; gap: 5px; margin-bottom: 11px; }
+.watch-term {
+  background: rgba(200,168,75,0.12);
+  border: 1px solid rgba(200,168,75,0.3);
+  border-radius: 10px; padding: 2px 9px;
+  font-size: 11px; font-weight: 700; color: var(--accent2);
+}
+.days-row { display: flex; gap: 5px; align-items: center; flex-wrap: wrap; }
+.day-box {
+  width: 30px; height: 30px; border-radius: 50%;
+  border: 1.5px solid var(--border-hi);
+  background: rgba(245,240,232,0.5);
+  display: flex; align-items: center; justify-content: center;
+  font-weight: 700; font-size: 11px; cursor: pointer;
+  transition: all 0.15s; color: var(--text-muted); user-select: none;
+}
+.day-box.on {
+  background: linear-gradient(135deg, var(--accent), var(--accent2));
+  border-color: transparent; color: #1a1208;
+  box-shadow: 0 2px 6px rgba(158,126,42,0.4);
+}
+.watch-meta { font-size: 11px; color: var(--text-muted); margin-top: 9px; }
+.btn-run {
+  background: rgba(245,240,232,0.15);
+  border: 1px solid var(--border-hi); border-radius: 12px;
+  color: var(--text-mid); font-size: 11px; font-weight: 700;
+  letter-spacing: 0.4px; padding: 5px 11px; cursor: pointer; transition: all 0.15s;
+}
+.btn-run:hover { border-color: var(--accent); color: var(--accent2); }
+.btn-del {
+  background: none; border: 1px solid rgba(139,32,32,0.35);
+  border-radius: 12px; color: var(--red-barn);
+  font-size: 11px; font-weight: 700; letter-spacing: 0.4px;
+  padding: 5px 11px; cursor: pointer; transition: all 0.15s;
+}
+.btn-del:hover { background: var(--red-barn); color: white; }
+.btn-add {
+  background: linear-gradient(135deg, var(--accent), var(--accent2));
+  border: none; border-radius: 9px; color: #1a1208;
+  font-family: 'Source Sans 3',sans-serif; font-weight: 700; font-size: 14px;
+  padding: 9px 18px; cursor: pointer; transition: all 0.18s;
+  box-shadow: 0 2px 8px rgba(158,126,42,0.35);
+}
+.btn-add:hover { transform: translateY(-1px); }
+
+.empty-watches { text-align: center; padding: 48px 20px; }
+.empty-watches-icon { font-size: 48px; margin-bottom: 12px; }
+
+@keyframes spin { to { transform: rotate(360deg); } }
+.spinner {
+  display: inline-block; width: 13px; height: 13px;
+  border: 2px solid rgba(26,18,8,0.2); border-top-color: #1a1208;
+  border-radius: 50%; animation: spin 0.65s linear infinite; vertical-align: middle;
+}
+</style>
+</head>
+<body>
+
+<div class="bg-layer"></div>
+<div class="sun-rays"></div>
+
+<!-- Fåglar -->
+<div class="bird" style="top:12%; --bd:22s; --bdelay:0s">🐦</div>
+<div class="bird" style="top:18%; --bd:28s; --bdelay:7s">🐦</div>
+<div class="bird" style="top:8%;  --bd:19s; --bdelay:14s">🐦</div>
+
+<!-- Träd-siluetter -->
+<div class="trees" id="treesWrap"></div>
+<div class="ground"></div>
+
+<div id="app">
+  <header>
+    <div class="logo">🌲 Begagnatjägaren</div>
+    <nav>
+      <button class="nav-btn active" id="navSok" onclick="showTab('sok',this)">Sök</button>
+      <button class="nav-btn" id="navBev" onclick="showTab('bev',this)">Bevakningar</button>
+    </nav>
+  </header>
+
+  <main>
+
+    <!-- ─── SÖK ─── -->
+    <div id="tab-sok" class="tab-content active">
+
+      <div class="card">
+        <div class="card-eyebrow">Vad letar du efter?</div>
+        <div class="search-row">
+          <input class="search-input" id="searchInput" type="text"
+            placeholder="t.ex. 72 volt truck batteri…"
+            onkeydown="if(event.key==='Enter')startSearch()">
+          <button class="btn-search" id="searchBtn" onclick="startSearch()">
+            <span id="searchBtnIcon">🔍</span> Sök
+          </button>
+        </div>
+        <div class="slider-wrap">
+          <div class="slider-lbl">Sökbredd</div>
+          <div class="slider-track">
+            <input type="range" id="breadthSlider" min="0" max="3" step="1" value="1" oninput="updateSlider()">
+            <div class="slider-ticks">
+              <span>Exakt</span><span>Normal</span><span>Brett</span><span>Allt</span>
+            </div>
+          </div>
+          <div class="slider-val" id="sliderVal">Normal</div>
+        </div>
+      </div>
+
+      <div id="loadingWrap" style="display:none" class="loading-wrap">
+        <div class="loading-icon">🍂</div>
+        <div class="loading-txt" id="loadingTxt">Söker…</div>
+      </div>
+
+      <div id="resultsSection" style="display:none">
+        <div class="results-bar">
+          <div class="results-title" id="resultsTitle"></div>
+          <span class="results-count" id="resultsCount"></span>
+          <button class="btn-ghost" onclick="saveWatch()">+ Spara bevakning</button>
+        </div>
+        <div class="terms-row" id="termsRow"></div>
+        <div class="ai-box" id="aiBox" style="display:none">
+          <div class="ai-box-label">✦ AI-sammanfattning</div>
+          <div id="aiBoxText"></div>
+        </div>
+        <div id="resultsList"></div>
+      </div>
+
+      <div id="noResult" style="display:none" class="no-result">
+        <div class="no-result-icon">🌾</div>
+        <h3>Inga träffar hittades</h3>
+        <p id="noResultMsg">Prova bredare sökbredd eller andra söktermer.</p>
+      </div>
+
+    </div>
+
+    <!-- ─── BEVAKNINGAR ─── -->
+    <div id="tab-bev" class="tab-content">
+
+      <div class="watch-form">
+        <div class="watch-form-title">✦ Lägg till ny bevakning</div>
+        <div class="form-row">
+          <input class="form-input" id="wName" placeholder="Namn, t.ex. Truckbatteri 72V">
+          <input class="form-input" id="wTerms" placeholder="Söktermer, kommaseparerade">
+        </div>
+        <div style="display:flex; align-items:center; gap:12px; flex-wrap:wrap;">
+          <span style="font-size:11px; font-weight:700; letter-spacing:1px; text-transform:uppercase; color:var(--text-muted)">Email:</span>
+          <div class="days-row" id="newDays"></div>
+          <button class="btn-add" onclick="addWatch()">+ Lägg till</button>
+        </div>
+      </div>
+
+      <div id="watchList"></div>
+      <div id="noWatches" class="empty-watches" style="display:none">
+        <div class="empty-watches-icon">🌲</div>
+        <h3 style="font-family:'Playfair Display',serif; font-style:italic; color:var(--cream); text-shadow:0 1px 4px rgba(0,0,0,0.5); margin-bottom:8px">Inga bevakningar ännu</h3>
+        <p style="color:rgba(245,240,232,0.5); font-size:14px">Spara en sökning eller lägg till manuellt ovan.</p>
+      </div>
+
+    </div>
+
+  </main>
+</div>
+
+<script>
+// ─── KONSTANTER ───────────────────────────────────────
+const DAYS      = ['M','T','O','T','F','L','S'];
+const DAYS_FULL = ['Måndag','Tisdag','Onsdag','Torsdag','Fredag','Lördag','Söndag'];
+const BREADTH_LABELS = ['Exakt','Normal','Brett','Allt'];
+const SITE_ICONS = {
+  'Blocket':'🏠','Tradera':'🔨','Klaravik':'⚡',
+  'Blinto':'🔵','Mascus':'🚜','Agriaffaires':'🌾',
+  'TM Maskin':'⚙️','Kvibergs':'🏷️'
+};
+
+const BREADTH_INSTR = [
+  'Sök ENBART på exakt denna söktermen. Inga varianter.',
+  'Sök på söktermen plus 2-3 självklara varianter (stavning, förkortning, svenska/engelska).',
+  'Expandera brett: varumärken, modellbeteckningar, tekniska synonymer, ersättningsprodukter. Upp till 8 söktermer.',
+  'Sök maximalt brett. Alla synonymer, märken, beteckningar, kategorier, svenska/engelska/tyska, alternativa lösningar. Upp till 15 söktermer. Tänk som en erfaren upphandlare.'
+];
+
+// ─── STATE ─────────────────────────────────────────────
+let currentQ    = '';
+let lastTerms   = [];
+let watches     = JSON.parse(localStorage.getItem('bj_watches') || '[]');
+let newDaysSel  = new Set([4]); // Fredag default
+
+// ─── NATUR-ANIMATION ──────────────────────────────────
+function makeTrees() {
+  const wrap = document.getElementById('treesWrap');
+  const n = Math.floor(window.innerWidth / 28) + 5;
+  for (let i = 0; i < n; i++) {
+    const h = 60 + Math.random() * 120;
+    const w = 10 + Math.random() * 20;
+    const tw = 3 + Math.random() * 4;
+    const th = 18 + Math.random() * 30;
+    const opacity = 0.6 + Math.random() * 0.4;
+    const div = document.createElement('div');
+    div.className = 'tree';
+    div.style.cssText = `width:${w}px; opacity:${opacity};`;
+    // Gran-form med tre lager kronor
+    div.innerHTML = `
+      <div class="tree-crown" style="border-left-width:${w*0.7}px; border-right-width:${w*0.7}px; border-bottom-width:${h*0.45}px; bottom:${th+h*0.3}px; position:absolute;"></div>
+      <div class="tree-crown" style="border-left-width:${w*0.85}px; border-right-width:${w*0.85}px; border-bottom-width:${h*0.4}px; bottom:${th+h*0.1}px; position:absolute;"></div>
+      <div class="tree-crown" style="border-left-width:${w}px; border-right-width:${w}px; border-bottom-width:${h*0.45}px; bottom:${th-5}px; position:absolute;"></div>
+      <div class="tree-trunk" style="width:${tw}px; height:${th}px;"></div>
+    `;
+    wrap.appendChild(div);
+  }
+}
+
+// ─── INIT ──────────────────────────────────────────────
+function init() {
+  makeTrees();
+  updateSlider();
+  renderNewDays();
+  renderWatches();
+}
+
+function updateSlider() {
+  const v = +document.getElementById('breadthSlider').value;
+  document.getElementById('sliderVal').textContent = BREADTH_LABELS[v];
+}
+
+function showTab(tab, btn) {
+  document.querySelectorAll('.tab-content').forEach(e => e.classList.remove('active'));
+  document.querySelectorAll('.nav-btn').forEach(e => e.classList.remove('active'));
+  document.getElementById('tab-' + tab).classList.add('active');
+  if (btn) btn.classList.add('active');
+  if (tab === 'bev') renderWatches();
+}
+
+function setStatus(msg) {
+  document.getElementById('loadingTxt').textContent = msg;
+}
+
+// ─── SÖK ──────────────────────────────────────────────
+async function startSearch() {
+  const q = document.getElementById('searchInput').value.trim();
+  if (!q) return;
+  currentQ = q; lastTerms = [];
+
+  const breadth = +document.getElementById('breadthSlider').value;
+
+  // UI-reset
+  document.getElementById('loadingWrap').style.display = 'block';
+  document.getElementById('resultsSection').style.display = 'none';
+  document.getElementById('noResult').style.display = 'none';
+  const btn = document.getElementById('searchBtn');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner"></span> Söker…';
+
+  try {
+    const data = await askClaude(q, breadth);
+    showResults(data);
+  } catch(err) {
+    console.error(err);
+    document.getElementById('noResult').style.display = 'block';
+    document.getElementById('noResultMsg').textContent = err.message || 'Okänt fel.';
+  }
+
+  document.getElementById('loadingWrap').style.display = 'none';
+  btn.disabled = false;
+  btn.innerHTML = '<span id="searchBtnIcon">🔍</span> Sök';
+}
+
+async function askClaude(q, breadth) {
+  const instr = BREADTH_INSTR[breadth];
+
+  const prompt = `Du är expert på svenska begagnatmarknader. Användaren söker: "${q}"
+
+Sökbredd: ${instr}
+
+Hitta relevanta begagnade annonser på Blocket, Tradera, Klaravik, Blinto, Mascus, Agriaffaires, TM Maskin, Kvibergs m.fl.
+
+Returnera ENBART JSON (noll text utanför JSON-blocket):
+{
+  "terms_used": ["term1","term2"],
+  "results": [
+    {
+      "title": "Annonsrubrik",
+      "site": "Blocket",
+      "price": "5 000 kr",
+      "location": "Göteborg",
+      "url": "https://www.blocket.se/annonser/hela_sverige?q=SÖKTERM",
+      "image_url": null,
+      "description": "Kort beskrivning max 90 tecken",
+      "date": "2025-05"
+    }
+  ],
+  "summary": "2-3 meningar om marknadsläget och tips"
+}
+
+URL-format: Blocket: /annonser/hela_sverige?q=TERM | Tradera: /search?q=TERM | Klaravik: /auktioner/?q=TERM | Blinto: /search?q=TERM | Mascus: /search#q=TERM`;
+
+  setStatus('AI söker på marknadsplatser…');
+
+  const resp = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      model: 'claude-sonnet-4-20250514',
+      max_tokens: 1500,
+      messages: [{ role: 'user', content: prompt }]
+    })
+  });
+
+  if (!resp.ok) {
+    const e = await resp.json().catch(() => ({}));
+    throw new Error(e.error?.message || 'HTTP ' + resp.status);
+  }
+
+  const data = await resp.json();
+  const text = (data.content || []).filter(b => b.type === 'text').map(b => b.text).join('');
+
+  if (!text) throw new Error('Tomt svar från AI');
+
+  setStatus('Bearbetar…');
+  const clean = text.replace(/```json|```/g,'').trim();
+  const s = clean.indexOf('{'), e = clean.lastIndexOf('}');
+  if (s < 0 || e < 0) throw new Error('Kunde inte tolka svar som JSON');
+
+  try {
+    return JSON.parse(clean.slice(s, e + 1));
+  } catch(pe) {
+    throw new Error('JSON-fel: ' + pe.message);
+  }
+}
+
+function showResults(data) {
+  const results = data.results || [];
+  lastTerms = data.terms_used || [];
+
+  if (!results.length) {
+    document.getElementById('noResult').style.display = 'block';
+    document.getElementById('noResultMsg').textContent = 'Inga annonser hittades. Prova bredare sökbredd.';
+    return;
+  }
+
+  document.getElementById('resultsSection').style.display = 'block';
+  document.getElementById('resultsTitle').textContent = '"' + currentQ + '"';
+  document.getElementById('resultsCount').textContent = results.length + ' annonser';
+
+  // Sökterms-chips
+  const tr = document.getElementById('termsRow');
+  tr.innerHTML = lastTerms.length > 1
+    ? lastTerms.map(t => `<span class="term-chip">${esc(t)}</span>`).join('') : '';
+
+  // AI-box
+  const ab = document.getElementById('aiBox');
+  if (data.summary) {
+    ab.style.display = 'block';
+    document.getElementById('aiBoxText').textContent = data.summary;
+  } else { ab.style.display = 'none'; }
+
+  // Kort
+  document.getElementById('resultsList').innerHTML = results.map(r => {
+    const icon = SITE_ICONS[r.site] || '🛒';
+    const hasImg = r.image_url && r.image_url !== 'null' && r.image_url !== null;
+    const pid = 'p' + Math.random().toString(36).slice(2);
+    return `
+    <div class="result-card" onclick="window.open('${esc(r.url||'#')}','_blank')">
+      <div class="result-thumb">
+        ${hasImg
+          ? `<img src="${esc(r.image_url)}" onerror="this.style.display='none';document.getElementById('${pid}').style.display='flex'" crossorigin="anonymous">`
+          : ''}
+        <div class="result-thumb-ph" id="${pid}" style="display:${hasImg?'none':'flex'}">${icon}</div>
+        <div class="result-thumb-site">${esc(r.site||'')}</div>
+      </div>
+      <div class="result-body">
+        <div class="result-site-lbl">${esc(r.site||'')}</div>
+        <div class="result-row">
+          <div class="result-title">${esc(r.title||'Utan rubrik')}</div>
+          <div class="result-price ${!r.price||r.price==='null'?'no-price':''}">${esc(r.price&&r.price!=='null'?r.price:'–')}</div>
+        </div>
+        <div class="result-meta">
+          ${r.location&&r.location!=='null'?`<span>📍 ${esc(r.location)}</span>`:''}
+          ${r.date&&r.date!=='null'?`<span>📅 ${esc(r.date)}</span>`:''}
+          ${r.description&&r.description!=='null'?`<span>${esc(r.description.substring(0,90))}</span>`:''}
+        </div>
+        ${r.url?`<a class="result-link" href="${esc(r.url)}" target="_blank" onclick="event.stopPropagation()">Öppna →</a>`:''}
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function esc(s) {
+  return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// ─── BEVAKNINGAR ──────────────────────────────────────
+function saveWatch() {
+  const w = {
+    id: Date.now(), name: currentQ,
+    terms: lastTerms.length ? lastTerms : [currentQ],
+    days: [4], created: new Date().toISOString(), lastSent: null
+  };
+  watches.unshift(w); saveWatches();
+  showTab('bev', document.getElementById('navBev'));
+}
+
+function addWatch() {
+  const name  = document.getElementById('wName').value.trim();
+  const terms = document.getElementById('wTerms').value.trim();
+  if (!name || !terms) return;
+  const w = {
+    id: Date.now(), name,
+    terms: terms.split(',').map(t=>t.trim()).filter(Boolean),
+    days: Array.from(newDaysSel),
+    created: new Date().toISOString(), lastSent: null
+  };
+  watches.unshift(w); saveWatches();
+  document.getElementById('wName').value = '';
+  document.getElementById('wTerms').value = '';
+  renderWatches();
+}
+
+function toggleDay(id, d) {
+  const w = watches.find(x=>x.id===id);
+  if (!w) return;
+  if (w.days.includes(d)) w.days = w.days.filter(x=>x!==d); else w.days.push(d);
+  saveWatches(); renderWatches();
+}
+
+function delWatch(id) {
+  if (!confirm('Ta bort bevakning?')) return;
+  watches = watches.filter(w=>w.id!==id);
+  saveWatches(); renderWatches();
+}
+
+function saveWatches() { localStorage.setItem('bj_watches', JSON.stringify(watches)); }
+
+function renderNewDays() {
+  document.getElementById('newDays').innerHTML = DAYS.map((d,i) => `
+    <div class="day-box ${newDaysSel.has(i)?'on':''}" onclick="toggleNewDay(${i})" title="${DAYS_FULL[i]}">${d}</div>
+  `).join('');
+}
+function toggleNewDay(i) {
+  if (newDaysSel.has(i)) newDaysSel.delete(i); else newDaysSel.add(i);
+  renderNewDays();
+}
+
+function renderWatches() {
+  const list  = document.getElementById('watchList');
+  const empty = document.getElementById('noWatches');
+  if (!watches.length) { list.innerHTML=''; empty.style.display='block'; return; }
+  empty.style.display='none';
+  list.innerHTML = watches.map(w => `
+    <div class="watch-card">
+      <div class="watch-header">
+        <div class="watch-name">${esc(w.name)}</div>
+        <div style="display:flex; gap:6px;">
+          <button class="btn-run" onclick="runWatch(${w.id})">▶ Kör nu</button>
+          <button class="btn-del" onclick="delWatch(${w.id})">Ta bort</button>
+        </div>
+      </div>
+      <div class="watch-terms">${w.terms.map(t=>`<span class="watch-term">${esc(t)}</span>`).join('')}</div>
+      <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+        <span style="font-size:11px; font-weight:700; letter-spacing:1px; text-transform:uppercase; color:var(--text-muted)">Email:</span>
+        <div class="days-row">
+          ${DAYS.map((d,i)=>`<div class="day-box ${w.days.includes(i)?'on':''}" onclick="toggleDay(${w.id},${i})" title="${DAYS_FULL[i]}">${d}</div>`).join('')}
+        </div>
+      </div>
+      <div class="watch-meta">
+        ${w.lastSent?'Senast skickat: '+new Date(w.lastSent).toLocaleDateString('sv-SE'):'Aldrig skickat'}
+        · Skapad: ${new Date(w.created).toLocaleDateString('sv-SE')}
+      </div>
+    </div>
+  `).join('');
+}
+
+async function runWatch(id) {
+  const w = watches.find(x=>x.id===id);
+  if (!w) return;
+  document.getElementById('searchInput').value = w.terms[0];
+  currentQ = w.terms[0];
+  showTab('sok', document.getElementById('navSok'));
+  await startSearch();
+  w.lastSent = new Date().toISOString();
+  saveWatches();
+}
+
+init();
+</script>
+</body>
+</html>
