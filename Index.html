@@ -782,14 +782,10 @@ URL-format: Blocket: /annonser/hela_sverige?q=TERM | Tradera: /search?q=TERM | K
 
   setStatus('AI söker på marknadsplatser…');
 
-  const resp = await fetch('https://api.anthropic.com/v1/messages', {
+  const resp = await fetch('/.netlify/functions/search', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      model: 'claude-sonnet-4-20250514',
-      max_tokens: 1500,
-      messages: [{ role: 'user', content: prompt }]
-    })
+    body: JSON.stringify({ prompt })
   });
 
   if (!resp.ok) {
