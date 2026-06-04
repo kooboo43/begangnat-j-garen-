@@ -31,24 +31,26 @@ exports.handler = async (event) => {
     let messages = [{ role: 'user', content: prompt }];
     let data = await makeRequest(messages);
     let rounds = 0;
+    const log = [`round0: stop_reason=${data.stop_reason} blocks=${data.content.map(b=>b.type).join(',')}`];
 
     while (data.stop_reason === 'tool_use' && rounds < 6) {
       rounds++;
-
-      // Lägg till hela assistant-svaret (innehåller tool_use blocks)
       messages.push({ role: 'assistant', content: data.content });
 
-      // Bygg tool_result för varje tool_use block
       const toolUseBlocks = data.content.filter(b => b.type === 'tool_use');
       const toolResults = toolUseBlocks.map(b => ({
         type: 'tool_result',
         tool_use_id: b.id,
-        content: b.content ? (typeof b.content === 'string' ? b.content : JSON.stringify(b.content)) : 'Search completed'
+        content: b.content ? (typeof b.content === 'string' ? b.content : JSON.stringify(b.content)) : 'ok'
       }));
 
       messages.push({ role: 'user', content: toolResults });
       data = await makeRequest(messages);
+      log.push(`round${rounds}: stop_reason=${data.stop_reason} blocks=${data.content.map(b=>b.type).join(',')}`);
     }
+
+    // Returnera data + debug-logg
+    data._debug = log;
 
     return {
       statusCode: 200,
