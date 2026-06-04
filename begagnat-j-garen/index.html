@@ -751,6 +751,18 @@ async function startSearch() {
   btn.innerHTML = '<span id="searchBtnIcon">🔍</span> Sök';
 }
 
+// Sajter med sök-URL-generatorer
+const SEARCH_SITES = [
+  { name: 'Blocket',      icon: '🏠', color: '#e8380d', url: q => `https://www.blocket.se/annonser/hela_sverige?q=${encodeURIComponent(q)}&ca=11&is=1&lt=s` },
+  { name: 'Tradera',      icon: '🔨', color: '#6b3fa0', url: q => `https://www.tradera.com/search?q=${encodeURIComponent(q)}&categoryId=0` },
+  { name: 'Klaravik',     icon: '⚡', color: '#f5a623', url: q => `https://www.klaravik.se/auktioner/?q=${encodeURIComponent(q)}` },
+  { name: 'Blinto',       icon: '🔵', color: '#0066cc', url: q => `https://www.blinto.se/search?q=${encodeURIComponent(q)}` },
+  { name: 'Mascus',       icon: '🚜', color: '#e8380d', url: q => `https://www.mascus.se/search#q=${encodeURIComponent(q)}` },
+  { name: 'Agriaffaires', icon: '🌾', color: '#3d8b3d', url: q => `https://www.agriaffaires.com/used/1/farm-tractor.html?fullText=${encodeURIComponent(q)}` },
+  { name: 'TM Maskin',    icon: '⚙️', color: '#555',    url: q => `https://www.tmmaskin.se/sok/?s=${encodeURIComponent(q)}` },
+  { name: 'Kvibergs',     icon: '🏷️', color: '#8b4513', url: q => `https://www.kvibergsnätauktion.se/search?q=${encodeURIComponent(q)}` },
+];
+
 async function askClaude(q, breadth) {
   const instr = BREADTH_INSTR[breadth];
 
@@ -758,29 +770,17 @@ async function askClaude(q, breadth) {
 
 Sökbredd: ${instr}
 
-Hitta relevanta begagnade annonser på Blocket, Tradera, Klaravik, Blinto, Mascus, Agriaffaires, TM Maskin, Kvibergs m.fl.
+Baserat på sökbredden, lista vilka söktermer som är relevanta.
+Ge sedan en marknadsanalys: typiska priser, vad man ska tänka på, tips för köparen.
 
-Returnera ENBART JSON (noll text utanför JSON-blocket):
+Returnera ENBART JSON:
 {
   "terms_used": ["term1","term2"],
-  "results": [
-    {
-      "title": "Annonsrubrik",
-      "site": "Blocket",
-      "price": "5 000 kr",
-      "location": "Göteborg",
-      "url": "https://www.blocket.se/annonser/hela_sverige?q=SÖKTERM",
-      "image_url": null,
-      "description": "Kort beskrivning max 90 tecken",
-      "date": "2025-05"
-    }
-  ],
-  "summary": "2-3 meningar om marknadsläget och tips"
-}
+  "price_range": "ca 5 000–15 000 kr",
+  "summary": "3-4 meningar om marknadsläget, typiska priser, tips och vad man ska tänka på vid köp"
+}`;
 
-URL-format: Blocket: /annonser/hela_sverige?q=TERM | Tradera: /search?q=TERM | Klaravik: /auktioner/?q=TERM | Blinto: /search?q=TERM | Mascus: /search#q=TERM`;
-
-  setStatus('AI söker på marknadsplatser…');
+  setStatus('AI analyserar marknaden…');
 
   const resp = await fetch('/.netlify/functions/search', {
     method: 'POST',
@@ -795,7 +795,6 @@ URL-format: Blocket: /annonser/hela_sverige?q=TERM | Tradera: /search?q=TERM | K
 
   const data = await resp.json();
   const text = (data.content || []).filter(b => b.type === 'text').map(b => b.text).join('');
-
   if (!text) throw new Error('Tomt svar från AI');
 
   setStatus('Bearbetar…');
@@ -811,60 +810,81 @@ URL-format: Blocket: /annonser/hela_sverige?q=TERM | Tradera: /search?q=TERM | K
 }
 
 function showResults(data) {
-  const results = data.results || [];
-  lastTerms = data.terms_used || [];
-
-  if (!results.length) {
-    document.getElementById('noResult').style.display = 'block';
-    document.getElementById('noResultMsg').textContent = 'Inga annonser hittades. Prova bredare sökbredd.';
-    return;
-  }
+  lastTerms = data.terms_used || [currentQ];
 
   document.getElementById('resultsSection').style.display = 'block';
   document.getElementById('resultsTitle').textContent = '"' + currentQ + '"';
-  document.getElementById('resultsCount').textContent = results.length + ' annonser';
+  document.getElementById('resultsCount').textContent = '';
 
   // Sökterms-chips
   const tr = document.getElementById('termsRow');
   tr.innerHTML = lastTerms.length > 1
     ? lastTerms.map(t => `<span class="term-chip">${esc(t)}</span>`).join('') : '';
 
-  // AI-box
+  // AI-analys
   const ab = document.getElementById('aiBox');
-  if (data.summary) {
+  if (data.summary || data.price_range) {
     ab.style.display = 'block';
-    document.getElementById('aiBoxText').textContent = data.summary;
+    document.getElementById('aiBoxText').innerHTML =
+      (data.price_range ? `<strong>Prisintervall:</strong> ${esc(data.price_range)}<br><br>` : '') +
+      esc(data.summary || '');
   } else { ab.style.display = 'none'; }
 
-  // Kort
-  document.getElementById('resultsList').innerHTML = results.map(r => {
-    const icon = SITE_ICONS[r.site] || '🛒';
-    const hasImg = r.image_url && r.image_url !== 'null' && r.image_url !== null;
-    const pid = 'p' + Math.random().toString(36).slice(2);
-    return `
-    <div class="result-card" onclick="window.open('${esc(r.url||'#')}','_blank')">
-      <div class="result-thumb">
-        ${hasImg
-          ? `<img src="${esc(r.image_url)}" onerror="this.style.display='none';document.getElementById('${pid}').style.display='flex'" crossorigin="anonymous">`
-          : ''}
-        <div class="result-thumb-ph" id="${pid}" style="display:${hasImg?'none':'flex'}">${icon}</div>
-        <div class="result-thumb-site">${esc(r.site||'')}</div>
-      </div>
-      <div class="result-body">
-        <div class="result-site-lbl">${esc(r.site||'')}</div>
-        <div class="result-row">
-          <div class="result-title">${esc(r.title||'Utan rubrik')}</div>
-          <div class="result-price ${!r.price||r.price==='null'?'no-price':''}">${esc(r.price&&r.price!=='null'?r.price:'–')}</div>
+  // Sajtknappar — en per sökterm × sajt
+  const terms = lastTerms.length ? lastTerms : [currentQ];
+  const list = document.getElementById('resultsList');
+
+  // Hämta träffar asynkront
+  setTimeout(() => fetchCounts(terms), 100);
+
+  list.innerHTML = `
+    <div style="margin-bottom:16px;">
+      <div style="font-size:11px; font-weight:700; letter-spacing:1.2px; text-transform:uppercase; color:var(--text-muted); margin-bottom:10px;">Sök aktuella annonser direkt →</div>
+      ${SEARCH_SITES.map(site => `
+        <div class="site-search-row">
+          <div class="site-search-icon">${site.icon}</div>
+          <div class="site-search-name">
+            ${site.name}
+            <span class="site-count site-count-${site.name.toLowerCase().replace(' ','')}" style="display:none"></span>
+          </div>
+          <div class="site-search-btns">
+            ${terms.slice(0,3).map(t => `
+              <a class="site-search-btn" href="${site.url(t)}" target="_blank">${esc(t)}</a>
+            `).join('')}
+          </div>
         </div>
-        <div class="result-meta">
-          ${r.location&&r.location!=='null'?`<span>📍 ${esc(r.location)}</span>`:''}
-          ${r.date&&r.date!=='null'?`<span>📅 ${esc(r.date)}</span>`:''}
-          ${r.description&&r.description!=='null'?`<span>${esc(r.description.substring(0,90))}</span>`:''}
-        </div>
-        ${r.url?`<a class="result-link" href="${esc(r.url)}" target="_blank" onclick="event.stopPropagation()">Öppna →</a>`:''}
-      </div>
-    </div>`;
-  }).join('');
+      `).join('')}
+    </div>
+  `;
+}
+
+// Hämta antal träffar från Blocket/Tradera
+async function fetchCounts(terms) {
+  const q = terms[0];
+  try {
+    const resp = await fetch('/.netlify/functions/search', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ countQuery: q })
+    });
+    if (!resp.ok) return;
+    const counts = await resp.json();
+
+    // Uppdatera Blocket-badge
+    if (counts.blocket !== null && counts.blocket !== undefined) {
+      document.querySelectorAll('.site-count-blocket').forEach(el => {
+        el.textContent = counts.blocket.toLocaleString('sv-SE') + ' st';
+        el.style.display = 'inline';
+      });
+    }
+    // Uppdatera Tradera-badge
+    if (counts.tradera !== null && counts.tradera !== undefined) {
+      document.querySelectorAll('.site-count-tradera').forEach(el => {
+        el.textContent = counts.tradera.toLocaleString('sv-SE') + ' st';
+        el.style.display = 'inline';
+      });
+    }
+  } catch(e) {}
 }
 
 function esc(s) {
