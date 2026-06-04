@@ -6,7 +6,6 @@ exports.handler = async (event) => {
   try {
     const { prompt } = JSON.parse(event.body);
 
-    // Första anropet med web_search
     const makeRequest = async (messages) => {
       const resp = await fetch('https://api.anthropic.com/v1/messages', {
         method: 'POST',
@@ -33,11 +32,21 @@ exports.handler = async (event) => {
     let data = await makeRequest(messages);
     let rounds = 0;
 
-    // Hantera web_search tool loop
     while (data.stop_reason === 'tool_use' && rounds < 6) {
       rounds++;
+
+      // Lägg till hela assistant-svaret (innehåller tool_use blocks)
       messages.push({ role: 'assistant', content: data.content });
-      messages.push({ role: 'user', content: 'Returnera nu JSON med resultaten du hittade.' });
+
+      // Bygg tool_result för varje tool_use block
+      const toolUseBlocks = data.content.filter(b => b.type === 'tool_use');
+      const toolResults = toolUseBlocks.map(b => ({
+        type: 'tool_result',
+        tool_use_id: b.id,
+        content: b.content ? (typeof b.content === 'string' ? b.content : JSON.stringify(b.content)) : 'Search completed'
+      }));
+
+      messages.push({ role: 'user', content: toolResults });
       data = await makeRequest(messages);
     }
 
